@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parallel Search Engine</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body 
+        {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            padding: 24px 16px;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        .header 
+        {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .status-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+        .badge 
+        {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 999px;
+            font-size: 13px;
+            background: #fff;
+            border: 1px solid #cbd5e1;
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }
+        .dot.ok { background: #16a34a; }
+        .dot.err { background: #dc2626; }
+        .card 
+        {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 18px 20px;
+            margin-bottom: 16px;
+        }
+        .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+        input 
+        {
+            padding: 9px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        button 
+        {
+            padding: 9px 18px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            background: #2563eb;
+            color: #fff;
+        }
+        button.dark { background: #0f172a; }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+        .pipeline { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        .stage 
+        {
+            flex: 1;
+            min-width: 170px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            font-size: 13px;
+            color: #64748b;
+        }
+        .stage.active { border-color: #2563eb; background: #eff6ff; color: #1e40af; }
+        .stage.done { border-color: #16a34a; background: #f0fdf4; color: #166534; }
+        .terms { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+        .tag 
+        {
+            background: #e0f2fe;
+            color: #0369a1;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 13px;
+        }
+        .meta { font-size: 13px; color: #64748b; }
+        .result { padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+        .result:last-child { border-bottom: none; }
+        .doc-id { font-weight: 600; color: #2563eb; }
+        .score { font-size: 12px; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; }
+        .snippet { font-size: 14px; color: #475569; margin-top: 4px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h2>Parallel Search Engine</h2>
+        <div class="status-bar">
+            <div class="badge"><span class="dot" id="dot-server"></span><span id="status-server">Server: ...</span></div>
+            <div class="badge"><span class="dot" id="dot-ollama"></span><span id="status-ollama">Ollama: ...</span></div>
+            <div class="badge" id="status-docs">Docs: 0</div>
+        </div>
+    </div>
+
+    <div class="card row">
+        <div class="row">
+            <label for="threads">Threads:</label>
+            <input type="number" id="threads" value="4" min="1" max="64" style="width: 75px;">
+            <button class="dark" id="build-btn" onclick="buildIndex()">Build Index</button>
+        </div>
+        <span class="meta" id="index-info">Not indexed yet</span>
+    </div>
+
+    <div class="card">
+        <form class="row" onsubmit="startSearch(event)">
+            <input type="text" id="query" placeholder="Enter search query..." required style="flex: 1;">
+            <button type="submit" id="search-btn">Search</button>
+        </form>
+        <div class="pipeline" id="pipeline" style="display: none;">
+            <div class="stage" id="s1">1. Query Expansion (LLM)</div>
+            <div class="stage" id="s2">2. Keyword Search</div>
+            <div class="stage" id="s3">3. Done</div>
+        </div>
+        <div class="terms" id="terms" style="display: none;"></div>
+    </div>
+
+    <div class="card" id="results-card" style="display: none;">
+        <div class="meta" id="results-meta" style="margin-bottom: 10px;"></div>
+        <div id="results-list"></div>
+    </div>
+</div>
+
+<script>
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+    async function refreshStatus() {
+        try 
+        {
+            const health = await (await fetch('/api/health')).json();
+            $('dot-server').className = 'dot ok';
+            $('status-server').textContent = 'Server: OK';
+            $('dot-ollama').className = health.ollama ? 'dot ok' : 'dot err';
+            $('status-ollama').textContent = health.ollama ? 'Ollama: Online' : 'Ollama: Offline';
+
+            const stats = await (await fetch('/api/stats')).json();
+            $('status-docs').textContent = `Docs: ${stats.documents}`;
+            if (stats.documents > 0) {
+                $('index-info').textContent = `Last build: ${stats.index_build_time_ms} ms (${stats.threads_used} threads)`;
+            }
+        } 
+        catch 
+        {
+            $('dot-server').className = 'dot err';
+            $('status-server').textContent = 'Server: Offline';
+        }
+    }
+
+    async function buildIndex() {
+        const threads = parseInt($('threads').value, 10) || 4;
+        $('build-btn').disabled = true;
+        $('build-btn').textContent = 'Indexing...';
+        try {
+            const res = await fetch('/api/index', 
+            {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({threads})
+            });
+            const data = await res.json();
+            $('index-info').textContent = `Indexed ${data.documents_indexed} docs in ${data.time_ms} ms`;
+            await refreshStatus();
+        } 
+        finally 
+        {
+            $('build-btn').disabled = false;
+            $('build-btn').textContent = 'Build Index';
+        }
+    }
+
+    function startSearch(e) 
+    {
+        e.preventDefault();
+        const query = $('query').value.trim();
+        if (!query) return;
+
+        $('s1').className = 'stage active';
+        $('s2').className = 'stage';
+        $('s3').className = 'stage';
+        $('pipeline').style.display = 'flex';
+        $('terms').style.display = 'none';
+        $('results-card').style.display = 'none';
+        $('search-btn').disabled = true;
+
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${proto}//${location.host}/ws/search`);
+        ws.onopen = () => ws.send(JSON.stringify({query}));
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.stage === 'query_expansion') 
+            {
+                $('s1').className = 'stage done';
+                $('s2').className = 'stage active';
+                const list = msg.data.expanded_terms || [];
+                $('terms').innerHTML = '<span class="meta">Expanded terms:</span>' +
+                    list.map(t => `<span class="tag">${esc(t)}</span>`).join('');
+                $('terms').style.display = list.length ? 'flex' : 'none';
+            } 
+            else if (msg.stage === 'keyword_search') 
+            {
+                $('s2').className = 'stage done';
+                const results = msg.data.results || [];
+                $('results-meta').textContent = `Found ${results.length} results in ${msg.data.time_ms ?? 0} ms`;
+                $('results-list').innerHTML = results.length
+                    ? results.map(r => `
+                        <div class="result">
+                            <div class="row">
+                                <span class="doc-id">${esc(r.doc_id)}</span>
+                                <span class="score">Score: ${Number(r.score).toFixed(2)}</span>
+                            </div>
+                            <div class="snippet">${esc(r.snippet)}</div>
+                        </div>`).join('')
+                    : '<div class="meta">No matching documents found.</div>';
+                $('results-card').style.display = 'block';
+            } 
+            else if (msg.stage === 'done') 
+            {
+                $('s3').className = 'stage done';
+                $('search-btn').disabled = false;
+                ws.close();
+            }
+        };
+        ws.onerror = () => 
+        {
+            $('search-btn').disabled = false;
+        };
+    }
+    refreshStatus();
+</script>
+</body>
+</html>

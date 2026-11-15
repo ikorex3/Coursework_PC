@@ -1,6 +1,8 @@
 #include "SearchApp.h"
 #include <chrono>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 using namespace std;
 
 SearchApp::SearchApp(int port, const string& data_path) : indexer(&index, data_path)
@@ -121,6 +123,22 @@ void SearchApp::WebSocketSearch(crow::websocket::connection& conn, const string&
 void SearchApp::Run()
 {
     crow::SimpleApp app;
+
+    CROW_ROUTE(app, "/")
+    ([]()
+    {
+        ifstream file("web/index.html");
+        if (!file.is_open())
+        {
+            return crow::response(404, "web/index.html not found");
+        }
+        stringstream ss;
+        ss << file.rdbuf();
+        crow::response res(ss.str());
+        res.set_header("Content-Type", "text/html; charset=utf-8");
+        return res;
+    });
+
     CROW_ROUTE(app, "/api/health")
     ([this]()
     {
