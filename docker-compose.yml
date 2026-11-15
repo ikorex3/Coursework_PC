@@ -17,6 +17,8 @@ services:
       - "8080:8080"
     environment:
       - OLLAMA_HOST=ollama:11434
+    volumes:
+      - ./data:/coursework/data
     depends_on:
       - ollama
     restart: unless-stopped
