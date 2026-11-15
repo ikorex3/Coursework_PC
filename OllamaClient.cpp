@@ -14,7 +14,7 @@ OllamaClient::OllamaClient()
     url = env ? string("http://") + env:"http://localhost:11434";
 
     const char* model_env = getenv("OLLAMA_MODEL");
-    model = model_env ? model_env:"llama3";
+    model = model_env ? model_env:"llama3.2:1b";
 }
 
 bool OllamaClient::IsAlive()
@@ -34,7 +34,7 @@ vector<string> OllamaClient::ExpandQuery(string text)
     cli.set_read_timeout(30);
     crow::json::wvalue body;
     body["model"] = model;
-    body["prompt"] = "Extract 5 search keywords and synonyms for the query: \"" + text + "\". Return ONLY a comma-separated list of words without any explanations or punctuation.";
+    body["prompt"] = "Extract 5 different single-word synonyms for the query: \"" + text + "\". Return ONLY a comma-separated list of words without any explanations or punctuation.";
     body["stream"] = false;
     auto res = cli.Post("/api/generate", body.dump(), "application/json");
     if (!res || res->status != 200)
@@ -47,6 +47,11 @@ vector<string> OllamaClient::ExpandQuery(string text)
         return expanded_words;
     }
     string response_text = json_res["response"].s();
+    size_t colon = response_text.find(':');
+    if (colon != string::npos)
+    {
+        response_text = response_text.substr(colon + 1);
+    }
     stringstream ss(response_text);
     string item;
     while (getline(ss, item, ','))
