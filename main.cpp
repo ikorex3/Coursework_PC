@@ -1,22 +1,13 @@
-#include "crow.h"
-#include "ThreadPool.h"
-#include "OllamaClient.h"
-#include <iostream>
+#include "SearchApp.h"
+#include <cstdlib>
+using namespace std;
 
 int main()
 {
-    crow::SimpleApp app;
-    OllamaClient ollama;
+    const char* env_data = getenv("DATA_PATH");
+    string data_path = env_data ? env_data:"./data";
 
-    CROW_ROUTE(app, "/api/health")
-    ([&ollama]() {
-        crow::json::wvalue res;
-        res["status"] = "ok";
-        res["ollama"] = ollama.IsAlive();
-        return res;
-    });
-
-    std::cout << "Starting server on port 8080...\n";
-    app.port(8080).multithreaded().run();
+    SearchApp app(8080, data_path);
+    app.Run();
     return 0;
 }

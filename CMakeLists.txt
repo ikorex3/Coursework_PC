@@ -28,6 +28,7 @@ add_executable(Coursework_PC
     OllamaClient.cpp
     IndexTable.cpp
     DataIndexer.cpp
+    SearchApp.cpp
 )
 
 target_link_libraries(Coursework_PC PRIVATE
