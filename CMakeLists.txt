@@ -36,3 +36,12 @@ target_link_libraries(Coursework_PC PRIVATE
     httplib::httplib
     Threads::Threads
 )
+
+add_executable(search
+    cli.cpp
+)
+
+target_link_libraries(search PRIVATE
+    Crow::Crow
+    httplib::httplib
+)
