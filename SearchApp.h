@@ -23,4 +23,5 @@ public:
     crow::json::wvalue PostIndex(int threads);
     crow::json::wvalue PostSearch(const string& query, const string& mode);
     crow::json::wvalue GetStats();
+    void WebSocketSearch(crow::websocket::connection& conn, const string& query);
 };

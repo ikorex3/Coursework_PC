@@ -71,6 +71,53 @@ crow::json::wvalue SearchApp::GetStats()
     return res;
 }
 
+void SearchApp::WebSocketSearch(crow::websocket::connection& conn, const string& query)
+{
+    if (query.empty())
+    {
+        crow::json::wvalue done_msg;
+        done_msg["stage"] = "done";
+        conn.send_text(done_msg.dump());
+        return;
+    }
+    auto expanded = llm.ExpandQuery(query);
+    vector<crow::json::wvalue> terms_list;
+    terms_list.reserve(expanded.size());
+    for (const auto& term:expanded)
+    {
+        terms_list.push_back(term);
+    }
+
+    crow::json::wvalue stage1;
+    stage1["stage"] = "query_expansion";
+    stage1["data"]["original"] = query;
+    stage1["data"]["expanded_terms"] = move(terms_list);
+    conn.send_text(stage1.dump());
+
+    auto start = chrono::steady_clock::now();
+    auto items = index.Search(expanded);
+    auto end = chrono::steady_clock::now();
+    long long time_ms = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+    vector<crow::json::wvalue> results_list;
+    results_list.reserve(items.size());
+    for (const auto& item:items)
+    {
+        crow::json::wvalue entry;
+        entry["doc_id"] = item.id;
+        entry["score"] = item.score;
+        entry["snippet"] = item.text;
+        results_list.push_back(move(entry));
+    }
+    crow::json::wvalue stage2;
+    stage2["stage"] = "keyword_search";
+    stage2["data"]["results"] = move(results_list);
+    stage2["data"]["time_ms"] = time_ms;
+    conn.send_text(stage2.dump());
+    crow::json::wvalue stage3;
+    stage3["stage"] = "done";
+    conn.send_text(stage3.dump());
+}
+
 void SearchApp::Run()
 {
     crow::SimpleApp app;
@@ -109,6 +156,15 @@ void SearchApp::Run()
     {
         return GetStats();
     });
+
+    CROW_WEBSOCKET_ROUTE(app, "/ws/search")
+    .onmessage([this](crow::websocket::connection& conn, const string& data, bool is_binary)
+    {
+        auto body = crow::json::load(data);
+        string query = (body && body.has("query")) ? string(body["query"].s()) : data;
+        WebSocketSearch(conn, query);
+    });
+
     cout << "Starting server on port " << port << "...\n";
     app.port(port).multithreaded().run();
 }
