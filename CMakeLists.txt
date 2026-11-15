@@ -27,6 +27,7 @@ add_executable(Coursework_PC
     ThreadPool.cpp
     OllamaClient.cpp
     IndexTable.cpp
+    DataIndexer.cpp
 )
 
 target_link_libraries(Coursework_PC PRIVATE
