@@ -2,9 +2,10 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
 #include <mutex>
 #include <shared_mutex>
+
+#include "HashMap.h"
 
 using namespace std;
 
@@ -24,8 +25,8 @@ struct SearchItem
 class IndexTable
 {
 private:
-    unordered_map<string, vector<IndexItem>> m_table_data;
-    unordered_map<string, string> m_doc_snippets;
+    HashMap<vector<IndexItem>> m_table_data;
+    HashMap<string> m_doc_snippets;
     int m_total_docs = 0;
     mutable shared_mutex m_mutex;
 
